@@ -56,7 +56,7 @@ namespace Vision.Controllers
                 string fileName = postedFile.FileName;
                 string prefixName = Path.GetFileNameWithoutExtension(fileName);
                 string path = string.Format("test-input/{0}", postedFile.FileName);
-                gcsStorage.UploadObject(bucketName, fileName, null, postedFile.InputStream);
+                gcsStorage.UploadObject(bucketName, path, null, postedFile.InputStream);
                 // for vision
                 ImageAnnotatorClient client = ImageAnnotatorClient.Create();
                 var content_byte = ByteString.FromStream(postedFile.InputStream);

@@ -86,7 +86,7 @@ namespace Vision.Controllers
                 requests.Add(syncRequest);
 
                 var operation = client.AsyncBatchAnnotateFiles(requests);
-                var response = operation.PollUntilCompletedAsync();
+                var response = operation.PollUntilCompleted();
                 // download file
                 var storageObjects = gcsStorage.ListObjects(bucketName);
                 foreach (var storageObject in storageObjects)

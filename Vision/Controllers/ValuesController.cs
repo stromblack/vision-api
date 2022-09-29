@@ -38,9 +38,9 @@ namespace Vision.Controllers
 
         [Route("document")]
         [HttpPost]
-        public IEnumerable<BatchAnnotateFilesResponse> ReadDocument()
+        public BatchAnnotateFilesResponse ReadDocument()
         {
-            List<BatchAnnotateFilesResponse> resp = new List<BatchAnnotateFilesResponse>();
+            BatchAnnotateFilesResponse resp = new BatchAnnotateFilesResponse();
             var httpRequest = HttpContext.Current.Request;
             foreach (string file in httpRequest.Files)
             {
@@ -70,7 +70,7 @@ namespace Vision.Controllers
                 requests.Add(syncRequest);
 
                 var response = client.BatchAnnotateFiles(requests);
-                resp.Add(response);
+                return response;
             }
             return resp;
         }

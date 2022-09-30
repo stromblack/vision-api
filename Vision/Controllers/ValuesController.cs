@@ -56,6 +56,7 @@ namespace Vision.Controllers
                 string fileName = postedFile.FileName;
                 string prefixName = Path.GetFileNameWithoutExtension(fileName);
                 string path = string.Format("test-input/{0}", postedFile.FileName);
+                string mimeType = MimeMapping.GetMimeMapping(fileName);
                 gcsStorage.UploadObject(bucketName, path, null, postedFile.InputStream);
                 // for vision
                 ImageAnnotatorClient client = ImageAnnotatorClient.Create();
@@ -68,7 +69,7 @@ namespace Vision.Controllers
                         GcsSource = new GcsSource() { Uri = $"gs://synergy-vision-test-bucket/{path}" },
                         // Content = content_byte,
                         // Supported mime_types are: 'application/pdf' and 'image/tiff'
-                        MimeType = "application/pdf"
+                        MimeType = mimeType
                     },
                     OutputConfig = new OutputConfig
                     {

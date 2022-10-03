@@ -19,24 +19,25 @@ namespace Vision.Controllers
     [RoutePrefix("api/vision")]
     public class ValuesController : ApiController
     {
+        static string mappedPath = System.Web.Hosting.HostingEnvironment.MapPath("~/App_Data");
+        static string svFile = Path.Combine(mappedPath, "vision-test-362406-eac69ae6377a.json");
         // GET api/values
         [Route("image")]
         [HttpPost]
-        public IEnumerable<EntityAnnotation> ReadImage()
+        public dynamic ReadImage()
         {
             var httpRequest = HttpContext.Current.Request;
             foreach (string file in httpRequest.Files)
             {
                 var postedFile = httpRequest.Files[file];
                 Image image = Image.FromStream(postedFile.InputStream);
-                ImageAnnotatorClient client = ImageAnnotatorClient.Create();
-                IReadOnlyList<EntityAnnotation> textAnnotations = client.DetectText(image);
-                string Description = "";
-                foreach (EntityAnnotation text in textAnnotations)
+                ImageAnnotatorClient client = new ImageAnnotatorClientBuilder()
                 {
-                    Description += $"{text.Description}";
-                }
-                return textAnnotations;
+                    CredentialsPath = svFile
+                }.Build();
+                IReadOnlyList<EntityAnnotation> textAnnotations = client.DetectText(image);
+                TextAnnotation docText = client.DetectDocumentText(image);
+                return new ResponseJson() { DetectText = textAnnotations, DetectDocumentText = docText };
             }
             return new List<EntityAnnotation>();
         }
@@ -59,7 +60,10 @@ namespace Vision.Controllers
                 string mimeType = MimeMapping.GetMimeMapping(fileName);
                 gcsStorage.UploadObject(bucketName, path, null, postedFile.InputStream);
                 // for vision
-                ImageAnnotatorClient client = ImageAnnotatorClient.Create();
+                ImageAnnotatorClient client = new ImageAnnotatorClientBuilder()
+                {
+                    CredentialsPath = svFile
+                }.Build();
                 var content_byte = ByteString.FromStream(postedFile.InputStream);
                 // create request
                 var syncRequest = new AsyncAnnotateFileRequest
@@ -115,4 +119,14 @@ namespace Vision.Controllers
             return resp;
         }
     }
-}
+
+    internal class ResponseJson
+    {
+        public ResponseJson()
+        {
+        }
+
+        public IReadOnlyList<EntityAnnotation> DetectText { get; set; }
+        public TextAnnotation DetectDocumentText { get; set; }
+    }
+}   

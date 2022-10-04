@@ -13,6 +13,8 @@ using System.Web;
 using System.Web.Http;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
+using ImageMagick;
+using Google.Apis.Discovery;
 
 namespace Vision.Controllers
 {
@@ -30,6 +32,8 @@ namespace Vision.Controllers
             foreach (string file in httpRequest.Files)
             {
                 var postedFile = httpRequest.Files[file];
+                string fileName = postedFile.FileName;
+                string prefixName = Path.GetFileNameWithoutExtension(fileName);
                 Image image = Image.FromStream(postedFile.InputStream);
                 ImageAnnotatorClient client = new ImageAnnotatorClientBuilder()
                 {
@@ -42,6 +46,126 @@ namespace Vision.Controllers
             return new List<EntityAnnotation>();
         }
 
+        private string SaveStreamIntoBucket(Stream stream, string fileName, string bucketName = "synergy-vision-test-bucket")
+        {
+            var gcsStorage = StorageClient.Create();
+            string prefixName = Path.GetFileNameWithoutExtension(fileName);
+            string path = string.Format("img-input/{0}", fileName);
+            string mimeType = MimeMapping.GetMimeMapping(fileName);
+            gcsStorage.UploadObject(bucketName, path, null, stream);
+            return string.Format("gs://{0}/{1}", bucketName, path);
+        }
+        private JObject DownloadBucket(string prefixName, string folderTarget,string bucketName = "synergy-vision-test-bucket")
+        {
+            // download file
+            var gcsStorage = StorageClient.Create();
+            var storageObjects = gcsStorage.ListObjects(bucketName);
+            foreach (var storageObject in storageObjects)
+            {
+                if (storageObject.Name.Contains(folderTarget))
+                {
+                    if (storageObject.Name.Contains(prefixName))
+                    {
+                        using (var mem = new MemoryStream())
+                        {
+                            gcsStorage.DownloadObject(bucketName, storageObject.Name, mem);
+                            Encoding LocalEncoding = Encoding.UTF8;
+                            string settingsString = LocalEncoding.GetString(mem.ToArray());
+                            //
+                            var jobject = JsonConvert.DeserializeObject<JObject>(settingsString);
+                            return jobject;
+                        }
+                    }
+                }
+            }
+            return new JObject(); ;
+        }
+        // GET api/values
+        [Route("batch/image")]
+        [HttpPost]
+        public dynamic ReadBatchImage()
+        {
+            // step 1 = get file from request 
+            // step 2 extract file pdf convert to n Image
+            // step 3 save n Image into Bucket
+            // step 4 prepare image-request for google-vision-api
+            // step 5 emit batch request
+            // step 6 download output-json
+            var httpRequest = HttpContext.Current.Request;
+            foreach (string file in httpRequest.Files)
+            {
+                var postedFile = httpRequest.Files[file];
+                string fileName = postedFile.FileName;
+                string prefixName = Path.GetFileNameWithoutExtension(fileName);
+                string fileExtension = Path.GetExtension(fileName);
+                //
+                int page = 1;
+                // list item upload;
+                List<string> imageBucketList = new List<string>();
+                using (MagickImageCollection images = new MagickImageCollection())
+                {
+                    var settings = new MagickReadSettings();
+                    // Settings the density to 300 dpi will create an image with a better quality
+                    settings.Density = new Density(300, 300);
+                    // read
+                    images.Read(postedFile.InputStream, settings);
+                    foreach (var img in images)
+                    {
+                        img.Format = MagickFormat.Jpg;
+                        img.Quality = 100;
+                        string newFileName = string.Format("{0}_{1}.{2}", prefixName, page, img.Format);
+                        using (var ms = new MemoryStream())
+                        {
+                            // write image to stream
+                            img.Write(ms);
+                            // save stream into bucket
+                            imageBucketList.Add(SaveStreamIntoBucket(ms, newFileName));
+                        }
+                        page += 1;
+                    }
+                }
+                //
+                // set client
+                ImageAnnotatorClient client = new ImageAnnotatorClientBuilder()
+                {
+                    CredentialsPath = svFile
+                }.Build();
+                // create request-list for n Image
+                var requests = new List<AnnotateImageRequest>();
+                for (int i = 0; i < imageBucketList.Count; i++)
+                {
+                    string fileUri = imageBucketList[i];
+                    // get source image from bucket;
+                    ImageSource image_source = new ImageSource() { ImageUri = fileUri };
+                    Image image = new Image()
+                    {
+                        Source = image_source
+                    };
+                    var request = new AnnotateImageRequest()
+                    {
+                        Image = image,
+                        Features = { new Feature { Type = Feature.Types.Type.DocumentTextDetection } }
+                    };
+                    requests.Add(request);
+                }
+                // 
+                var requestList = new AsyncBatchAnnotateImagesRequest()
+                {
+                    Requests = { requests },
+                    OutputConfig = new OutputConfig
+                    {
+                        GcsDestination = new GcsDestination() { Uri = $"gs://synergy-vision-test-bucket/output-img/{prefixName}" },
+                    }
+                };
+                var operation = client.AsyncBatchAnnotateImages(requestList);
+                var response = operation.PollUntilCompleted();
+                // download bucket
+                return DownloadBucket(prefixName, "output-img/");
+                // return response;
+            }
+            return new List<string>();
+        }
+
         [Route("document")]
         [HttpPost]
         public dynamic ReadDocument()
@@ -51,7 +175,6 @@ namespace Vision.Controllers
             foreach (string file in httpRequest.Files)
             {
                 var postedFile = httpRequest.Files[file];
-                // 
                 var gcsStorage = StorageClient.Create();
                 string bucketName = "synergy-vision-test-bucket";
                 string fileName = postedFile.FileName;
@@ -93,27 +216,7 @@ namespace Vision.Controllers
                 var operation = client.AsyncBatchAnnotateFiles(requests);
                 var response = operation.PollUntilCompleted();
                 // download file
-                var storageObjects = gcsStorage.ListObjects(bucketName);
-                foreach (var storageObject in storageObjects)
-                {
-                    if (storageObject.Name.Contains("output/"))
-                    {
-                        if (storageObject.Name.Contains(prefixName))
-                        {
-                            using (var mem = new MemoryStream())
-                            {
-                                gcsStorage.DownloadObject(bucketName, storageObject.Name, mem);
-                                Encoding LocalEncoding = Encoding.UTF8;
-                                string settingsString = LocalEncoding.GetString(mem.ToArray());
-                                //
-                                var jobject = JsonConvert.DeserializeObject<JObject>(settingsString);
-                                return jobject;
-                            }
-                        }
-                        Console.WriteLine(storageObject.Name);
-                    }
-         
-                }
+                return DownloadBucket(prefixName, "output/");
                 // return response;
             }
             return resp;

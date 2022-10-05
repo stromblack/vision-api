@@ -154,13 +154,14 @@ namespace Vision.Controllers
                     Requests = { requests },
                     OutputConfig = new OutputConfig
                     {
+                        BatchSize = 100, // The valid range is [1, 100]. If not specified, the default value is 20.
                         GcsDestination = new GcsDestination() { Uri = $"gs://synergy-vision-test-bucket/output-img/{prefixName}" },
                     }
                 };
                 var operation = client.AsyncBatchAnnotateImages(requestList);
                 var response = operation.PollUntilCompleted();
                 // download bucket
-                return DownloadBucket(prefixName, "output-img/");
+               return DownloadBucket(prefixName, "output-img/");
                 // return response;
             }
             return new List<string>();
@@ -200,6 +201,7 @@ namespace Vision.Controllers
                     },
                     OutputConfig = new OutputConfig
                     {
+                        BatchSize = 100, //The valid range is [1, 100]. If not specified, the default value is 20.
                         GcsDestination = new GcsDestination() { Uri = $"gs://synergy-vision-test-bucket/output/{prefixName}" },
                     }
                 };

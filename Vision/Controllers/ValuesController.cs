@@ -112,7 +112,7 @@ namespace Vision.Controllers
                     foreach (var img in images)
                     {
                         img.Format = MagickFormat.Jpg;
-                        img.Quality = 100;
+                        img.Quality = 75;
                         string newFileName = string.Format("{0}_{1}.{2}", prefixName, page, img.Format);
                         using (var ms = new MemoryStream())
                         {
